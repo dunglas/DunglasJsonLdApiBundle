@@ -1,3 +1,5 @@
+@eloquent
+@eloquent_mapped
 Feature: Create-Retrieve-Update-Delete
   In order to use an hypermedia API
   As a client software developer
@@ -101,6 +103,8 @@ Feature: Create-Retrieve-Update-Delete
     When I send a "GET" request to "/dummies/42"
     Then the response status code should be 404
 
+  @!eloquent
+  @!eloquent_mapped
   Scenario: Get a collection
     When I send a "GET" request to "/dummies"
     Then the response status code should be 200

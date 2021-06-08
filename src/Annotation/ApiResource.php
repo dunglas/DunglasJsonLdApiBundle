@@ -29,6 +29,7 @@ use ApiPlatform\Core\Exception\InvalidArgumentException;
  *     @Attribute("cacheHeaders", type="array"),
  *     @Attribute("collectionOperations", type="array"),
  *     @Attribute("compositeIdentifier", type="bool"),
+ *     @Attribute("dataModel", type="string"),
  *     @Attribute("denormalizationContext", type="array"),
  *     @Attribute("deprecationReason", type="string"),
  *     @Attribute("description", type="string"),
@@ -138,6 +139,7 @@ final class ApiResource
      * @param array        $itemOperations                  https://api-platform.com/docs/core/operations
      * @param array        $subresourceOperations           https://api-platform.com/docs/core/subresources
      * @param array        $cacheHeaders                    https://api-platform.com/docs/core/performance/#setting-custom-http-cache-headers
+     * @param string       $dataModel
      * @param array        $denormalizationContext          https://api-platform.com/docs/core/serialization/#using-serialization-groups
      * @param string       $deprecationReason               https://api-platform.com/docs/core/deprecations/#deprecating-resource-classes-operations-and-properties
      * @param bool         $elasticsearch                   https://api-platform.com/docs/core/elasticsearch/
@@ -189,6 +191,7 @@ final class ApiResource
         // attributes
         ?array $attributes = null,
         ?array $cacheHeaders = null,
+        ?string $dataModel = null,
         ?array $denormalizationContext = null,
         ?string $deprecationReason = null,
         ?bool $elasticsearch = null,
