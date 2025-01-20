@@ -24,6 +24,7 @@ final class PersistProcessor implements ProcessorInterface
 {
     use ClassInfoTrait;
     use LinksHandlerTrait;
+    use ResourceTransformerLocatorTrait;
 
     public function __construct(private readonly ManagerRegistry $managerRegistry)
     {
