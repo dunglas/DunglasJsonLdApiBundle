@@ -33,6 +33,7 @@ use Symfony\Component\Serializer\Normalizer\AbstractNormalizer;
 final class SchemaFactory implements SchemaFactoryInterface, SchemaFactoryAwareInterface
 {
     use ResourceMetadataTrait;
+    use SchemaUriPrefixTrait;
 
     private ?SchemaFactoryInterface $schemaFactory = null;
     // Edge case where the related resource is not readable (for example: NotExposed) but we have groups to read the whole related object
@@ -42,7 +43,7 @@ final class SchemaFactory implements SchemaFactoryInterface, SchemaFactoryAwareI
     public function __construct(ResourceMetadataCollectionFactoryInterface $resourceMetadataFactory, private readonly PropertyNameCollectionFactoryInterface $propertyNameCollectionFactory, private readonly PropertyMetadataFactoryInterface $propertyMetadataFactory, private readonly ?NameConverterInterface $nameConverter = null, ?ResourceClassResolverInterface $resourceClassResolver = null, private readonly ?array $distinctFormats = null, private ?DefinitionNameFactoryInterface $definitionNameFactory = null)
     {
         if (!$definitionNameFactory) {
-            $this->definitionNameFactory = new DefinitionNameFactory($this->distinctFormats);
+            $this->definitionNameFactory = new DefinitionNameFactory($distinctFormats);
         }
 
         $this->resourceMetadataFactory = $resourceMetadataFactory;
@@ -85,7 +86,7 @@ final class SchemaFactory implements SchemaFactoryInterface, SchemaFactoryAwareI
         }
 
         if (!isset($schema['$ref']) && !isset($schema['type'])) {
-            $ref = Schema::VERSION_OPENAPI === $version ? '#/components/schemas/'.$definitionName : '#/definitions/'.$definitionName;
+            $ref = $this->getSchemaUriPrefix($version).$definitionName;
             if ($forceCollection || ('POST' !== $method && $operation instanceof CollectionOperationInterface)) {
                 $schema['type'] = 'array';
                 $schema['items'] = ['$ref' => $ref];
@@ -114,8 +115,6 @@ final class SchemaFactory implements SchemaFactoryInterface, SchemaFactoryAwareI
         // see https://github.com/json-schema-org/json-schema-spec/pull/737
         if (Schema::VERSION_SWAGGER !== $version && $operation && $operation->getDeprecationReason()) {
             $definition['deprecated'] = true;
-        } else {
-            $definition['deprecated'] = false;
         }
 
         // externalDocs is an OpenAPI specific extension, but JSON Schema allows additional keys, so we always add it
@@ -177,6 +176,10 @@ final class SchemaFactory implements SchemaFactoryInterface, SchemaFactoryAwareI
         // or if property schema is already fully defined (type=string + format || enum)
         $propertySchemaType = $propertySchema['type'] ?? false;
 
+        if (Schema::UNKNOWN_TYPE === $propertySchemaType && 'propertyCollectionIriOnlyRelation' === $normalizedPropertyName) {
+            dd($propertySchema, $propertyMetadata);
+        }
+
         $isUnknown = Schema::UNKNOWN_TYPE === $propertySchemaType
             || ('array' === $propertySchemaType && Schema::UNKNOWN_TYPE === ($propertySchema['items']['type'] ?? null))
             || ('object' === $propertySchemaType && Schema::UNKNOWN_TYPE === ($propertySchema['additionalProperties']['type'] ?? null));
@@ -189,6 +192,10 @@ final class SchemaFactory implements SchemaFactoryInterface, SchemaFactoryAwareI
                 || ($propertySchema['format'] ?? $propertySchema['enum'] ?? false)
             )
         ) {
+            if (isset($propertySchema['$ref'])) {
+                unset($propertySchema['type']);
+            }
+
             $schema->getDefinitions()[$definitionName]['properties'][$normalizedPropertyName] = new \ArrayObject($propertySchema);
 
             return;

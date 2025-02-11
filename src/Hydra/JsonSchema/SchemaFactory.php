@@ -15,10 +15,15 @@ namespace ApiPlatform\Hydra\JsonSchema;
 
 use ApiPlatform\JsonLd\ContextBuilder;
 use ApiPlatform\JsonLd\Serializer\HydraPrefixTrait;
+use ApiPlatform\JsonSchema\DefinitionNameFactory;
+use ApiPlatform\JsonSchema\DefinitionNameFactoryInterface;
+use ApiPlatform\JsonSchema\ResourceMetadataTrait;
 use ApiPlatform\JsonSchema\Schema;
 use ApiPlatform\JsonSchema\SchemaFactoryAwareInterface;
 use ApiPlatform\JsonSchema\SchemaFactoryInterface;
+use ApiPlatform\JsonSchema\SchemaUriPrefixTrait;
 use ApiPlatform\Metadata\Operation;
+use ApiPlatform\Metadata\Resource\Factory\ResourceMetadataCollectionFactoryInterface;
 
 /**
  * Decorator factory which adds Hydra properties to the JSON Schema document.
@@ -28,6 +33,11 @@ use ApiPlatform\Metadata\Operation;
 final class SchemaFactory implements SchemaFactoryInterface, SchemaFactoryAwareInterface
 {
     use HydraPrefixTrait;
+    use ResourceMetadataTrait;
+    use SchemaUriPrefixTrait;
+
+    private const ITEM_BASE_SCHEMA_NAME = 'HydraItemBaseSchema';
+    private const COLLECTION_BASE_SCHEMA_NAME = 'HydraCollectionBaseSchema';
     private const BASE_PROP = [
         'readOnly' => true,
         'type' => 'string',
@@ -59,8 +69,20 @@ final class SchemaFactory implements SchemaFactoryInterface, SchemaFactoryAwareI
         ],
     ] + self::BASE_PROPS;
 
-    public function __construct(private readonly SchemaFactoryInterface $schemaFactory, private readonly array $defaultContext = [])
-    {
+    /**
+     * @param array<string, mixed> $defaultContext
+     */
+    public function __construct(
+        private readonly SchemaFactoryInterface $schemaFactory,
+        private readonly array $defaultContext = [],
+        private ?DefinitionNameFactoryInterface $definitionNameFactory = null,
+        ?ResourceMetadataCollectionFactoryInterface $resourceMetadataFactory = null,
+    ) {
+        if (!$definitionNameFactory) {
+            $this->definitionNameFactory = new DefinitionNameFactory();
+        }
+        $this->resourceMetadataFactory = $resourceMetadataFactory;
+
         if ($this->schemaFactory instanceof SchemaFactoryAwareInterface) {
             $this->schemaFactory->setSchemaFactory($this);
         }
@@ -71,112 +93,165 @@ final class SchemaFactory implements SchemaFactoryInterface, SchemaFactoryAwareI
      */
     public function buildSchema(string $className, string $format = 'jsonld', string $type = Schema::TYPE_OUTPUT, ?Operation $operation = null, ?Schema $schema = null, ?array $serializerContext = null, bool $forceCollection = false): Schema
     {
-        $schema = $this->schemaFactory->buildSchema($className, $format, $type, $operation, $schema, $serializerContext, $forceCollection);
-        if ('jsonld' !== $format) {
-            return $schema;
+        if ('jsonld' !== $format || 'input' === $type) {
+            return $this->schemaFactory->buildSchema($className, $format, $type, $operation, $schema, $serializerContext, $forceCollection);
         }
 
-        if ('input' === $type) {
-            return $schema;
+        if (!$this->isResourceClass($className)) {
+            $operation = null;
+            $inputOrOutputClass = null;
+            $serializerContext ??= [];
+        } else {
+            $operation = $this->findOperation($className, $type, $operation, $serializerContext, $format);
+            $inputOrOutputClass = $this->findOutputClass($className, $type, $operation, $serializerContext);
+            $serializerContext ??= $this->getSerializerContext($operation, $type);
+        }
+        if (null === $inputOrOutputClass) {
+            // input or output disabled
+            return $this->schemaFactory->buildSchema($className, $format, $type, $operation, $schema, $serializerContext, $forceCollection);
         }
 
+        $schema = $this->schemaFactory->buildSchema($className, 'json', $type, $operation, $schema, $serializerContext, $forceCollection);
+        $definitionName = $this->definitionNameFactory->create($className, $format, $className, $operation, $serializerContext);
         $definitions = $schema->getDefinitions();
-        if ($key = $schema->getRootDefinitionKey()) {
-            $definitions[$key]['properties'] = self::BASE_ROOT_PROPS + ($definitions[$key]['properties'] ?? []);
+        $prefix = $this->getSchemaUriPrefix($schema->getVersion());
+        $collectionKey = $schema->getItemsDefinitionKey();
+
+        // Already computed
+        if (!$collectionKey && isset($definitions[$definitionName])) {
+            $schema['$ref'] = $prefix.$definitionName;
 
             return $schema;
         }
-        if ($key = $schema->getItemsDefinitionKey()) {
-            $definitions[$key]['properties'] = self::BASE_PROPS + ($definitions[$key]['properties'] ?? []);
+
+        $key = $schema->getRootDefinitionKey() ?? $collectionKey;
+
+        if (!isset($definitions[self::ITEM_BASE_SCHEMA_NAME])) {
+            $definitions[self::ITEM_BASE_SCHEMA_NAME] = ['type' => 'object', 'properties' => self::BASE_ROOT_PROPS];
         }
 
+        $definitions[$definitionName] = [
+            'allOf' => [
+                ['$ref' => $prefix.self::ITEM_BASE_SCHEMA_NAME],
+                ['$ref' => $prefix.$key],
+            ],
+        ];
+
+        if (isset($definitions[$key]['description'])) {
+            $definitions[$definitionName]['description'] = $definitions[$key]['description'];
+        }
+
+        if (!$collectionKey) {
+            $schema['$ref'] = $prefix.$definitionName;
+
+            return $schema;
+        }
+
+        // handle hydra:Collection
         if (($schema['type'] ?? '') === 'array') {
-            // hydra:collection
-            $items = $schema['items'];
-            unset($schema['items']);
+            $hydraPrefix = $this->getHydraPrefix($serializerContext + $this->defaultContext);
 
-            switch ($schema->getVersion()) {
-                // JSON Schema + OpenAPI 3.1
-                case Schema::VERSION_OPENAPI:
-                case Schema::VERSION_JSON_SCHEMA:
-                    $nullableStringDefinition = ['type' => ['string', 'null']];
-                    break;
-                    // Swagger
-                default:
-                    $nullableStringDefinition = ['type' => 'string'];
-                    break;
-            }
+            if (!isset($definitions[self::COLLECTION_BASE_SCHEMA_NAME])) {
+                switch ($schema->getVersion()) {
+                    // JSON Schema + OpenAPI 3.1
+                    case Schema::VERSION_OPENAPI:
+                    case Schema::VERSION_JSON_SCHEMA:
+                        $nullableStringDefinition = ['type' => ['string', 'null']];
+                        break;
+                        // Swagger
+                    default:
+                        $nullableStringDefinition = ['type' => 'string'];
+                        break;
+                }
 
-            $hydraPrefix = $this->getHydraPrefix(($serializerContext ?? []) + $this->defaultContext);
-            $schema['type'] = 'object';
-            $schema['properties'] = [
-                $hydraPrefix.'member' => [
-                    'type' => 'array',
-                    'items' => $items,
-                ],
-                $hydraPrefix.'totalItems' => [
-                    'type' => 'integer',
-                    'minimum' => 0,
-                ],
-                $hydraPrefix.'view' => [
+                $definitions[self::COLLECTION_BASE_SCHEMA_NAME] = [
                     'type' => 'object',
-                    'properties' => [
-                        '@id' => [
-                            'type' => 'string',
-                            'format' => 'iri-reference',
-                        ],
-                        '@type' => [
-                            'type' => 'string',
-                        ],
-                        $hydraPrefix.'first' => [
-                            'type' => 'string',
-                            'format' => 'iri-reference',
-                        ],
-                        $hydraPrefix.'last' => [
-                            'type' => 'string',
-                            'format' => 'iri-reference',
-                        ],
-                        $hydraPrefix.'previous' => [
-                            'type' => 'string',
-                            'format' => 'iri-reference',
-                        ],
-                        $hydraPrefix.'next' => [
-                            'type' => 'string',
-                            'format' => 'iri-reference',
-                        ],
+                    'required' => [
+                        $hydraPrefix.'member',
                     ],
-                    'example' => [
-                        '@id' => 'string',
-                        'type' => 'string',
-                        $hydraPrefix.'first' => 'string',
-                        $hydraPrefix.'last' => 'string',
-                        $hydraPrefix.'previous' => 'string',
-                        $hydraPrefix.'next' => 'string',
-                    ],
-                ],
-                $hydraPrefix.'search' => [
-                    'type' => 'object',
                     'properties' => [
-                        '@type' => ['type' => 'string'],
-                        $hydraPrefix.'template' => ['type' => 'string'],
-                        $hydraPrefix.'variableRepresentation' => ['type' => 'string'],
-                        $hydraPrefix.'mapping' => [
+                        $hydraPrefix.'member' => [
                             'type' => 'array',
-                            'items' => [
-                                'type' => 'object',
-                                'properties' => [
-                                    '@type' => ['type' => 'string'],
-                                    'variable' => ['type' => 'string'],
-                                    'property' => $nullableStringDefinition,
-                                    'required' => ['type' => 'boolean'],
+                        ],
+                        $hydraPrefix.'totalItems' => [
+                            'type' => 'integer',
+                            'minimum' => 0,
+                        ],
+                        $hydraPrefix.'view' => [
+                            'type' => 'object',
+                            'properties' => [
+                                '@id' => [
+                                    'type' => 'string',
+                                    'format' => 'iri-reference',
+                                ],
+                                '@type' => [
+                                    'type' => 'string',
+                                ],
+                                $hydraPrefix.'first' => [
+                                    'type' => 'string',
+                                    'format' => 'iri-reference',
+                                ],
+                                $hydraPrefix.'last' => [
+                                    'type' => 'string',
+                                    'format' => 'iri-reference',
+                                ],
+                                $hydraPrefix.'previous' => [
+                                    'type' => 'string',
+                                    'format' => 'iri-reference',
+                                ],
+                                $hydraPrefix.'next' => [
+                                    'type' => 'string',
+                                    'format' => 'iri-reference',
+                                ],
+                            ],
+                            'example' => [
+                                '@id' => 'string',
+                                'type' => 'string',
+                                $hydraPrefix.'first' => 'string',
+                                $hydraPrefix.'last' => 'string',
+                                $hydraPrefix.'previous' => 'string',
+                                $hydraPrefix.'next' => 'string',
+                            ],
+                        ],
+                        $hydraPrefix.'search' => [
+                            'type' => 'object',
+                            'properties' => [
+                                '@type' => ['type' => 'string'],
+                                $hydraPrefix.'template' => ['type' => 'string'],
+                                $hydraPrefix.'variableRepresentation' => ['type' => 'string'],
+                                $hydraPrefix.'mapping' => [
+                                    'type' => 'array',
+                                    'items' => [
+                                        'type' => 'object',
+                                        'properties' => [
+                                            '@type' => ['type' => 'string'],
+                                            'variable' => ['type' => 'string'],
+                                            'property' => $nullableStringDefinition,
+                                            'required' => ['type' => 'boolean'],
+                                        ],
+                                    ],
                                 ],
                             ],
                         ],
                     ],
+                ];
+            }
+
+            unset($schema['items']);
+
+            $schema['type'] = 'object';
+            $schema['description'] = "$definitionName collection.";
+            $schema['allOf'] = [
+                ['$ref' => $prefix.self::COLLECTION_BASE_SCHEMA_NAME],
+                [
+                    'type' => 'object',
+                    'properties' => [
+                        $hydraPrefix.'member' => [
+                            'type' => 'array',
+                            'items' => ['$ref' => $prefix.$definitionName],
+                        ],
+                    ],
                 ],
-            ];
-            $schema['required'] = [
-                $hydraPrefix.'member',
             ];
 
             return $schema;
