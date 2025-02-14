@@ -35,18 +35,13 @@ Route::domain($domain)->middleware($globalMiddlewares)->group(function (): void 
     foreach ($resourceNameCollectionFactory->create() as $resourceClass) {
         foreach ($resourceMetadataFactory->create($resourceClass) as $resourceMetadata) {
             foreach ($resourceMetadata->getOperations() as $operation) {
-                if ($operation->getRouteName()) {
-                    continue;
-                }
-
                 /* @var HttpOperation $operation */
-                Route::addRoute($operation->getMethod(), Str::replace('{._format}', '{_format?}', $operation->getUriTemplate()), ApiPlatformController::class)
-                    ->prefix($operation->getRoutePrefix())
-                    ->middleware(ApiPlatformMiddleware::class.':'.$operation->getName())
-                    ->middleware($operation->getMiddleware())
-                    ->where('_format', '^\.[a-zA-Z]+')
-                    ->name($operation->getName())
-                    ->setDefaults(['_api_operation_name' => $operation->getName(), '_api_resource_class' => $operation->getClass()]);
+                    Route::addRoute($operation->getMethod(), Str::replace('{._format}', '{_format?}', $operation->getUriTemplate()), ApiPlatformController::class)
+                         ->prefix($operation->getRoutePrefix())
+                         ->middleware([ApiPlatformMiddleware::class.':'.$operation->getName(), $operation->getMiddleware()])
+                         ->where('_format', '^\.[a-zA-Z]+')
+                         ->name($operation->getName())
+                         ->setDefaults(['_api_operation_name' => $operation->getName(), '_api_resource_class' => $operation->getClass()]);
             }
         }
     }
@@ -78,11 +73,22 @@ Route::domain($domain)->middleware($globalMiddlewares)->group(function (): void 
         });
 
         if (config()->get('api-platform.graphql.enabled')) {
-            Route::addRoute(['POST', 'GET'], '/graphql', GraphQlEntrypointController::class)
-                ->name('api_graphql');
+            Route::group([
+                'middleware' => config()->get('api-platform.graphql.middleware', [])
+            ], function () {
+                Route::addRoute(['POST', 'GET'], '/graphql', GraphQlEntrypointController::class)
+                     ->name('api_graphql');
+            });
 
-            Route::get('/graphiql', GraphiQlController::class)
-                ->name('api_graphiql');
+            if (config()->get('api-platform.graphiql.enabled')) {
+                Route::group([
+                    'middleware' => config()->get('api-platform.graphiql.middleware', []),
+                    'domain' =>  config()->get('api-platform.graphiql.domain')
+                ], function () {
+                    Route::get('/graphiql', GraphiQlController::class)
+                        ->name('api_graphiql');
+                });
+            }
         }
     });
 });
