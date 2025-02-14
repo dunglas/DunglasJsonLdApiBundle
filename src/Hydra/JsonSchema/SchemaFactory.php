@@ -112,37 +112,37 @@ final class SchemaFactory implements SchemaFactoryInterface, SchemaFactoryAwareI
             $inputOrOutputClass = $this->findOutputClass($className, $type, $operation, $serializerContext);
             $serializerContext ??= $this->getSerializerContext($operation, $type);
         }
+
         if (null === $inputOrOutputClass) {
             // input or output disabled
             return $this->schemaFactory->buildSchema($className, $format, $type, $operation, $schema, $serializerContext, $forceCollection);
         }
 
         $schema = $this->schemaFactory->buildSchema($className, 'json', $type, $operation, $schema, $serializerContext, $forceCollection);
+        $schema = $this->schemaFactory->buildSchema($className, 'jsonld', $type, $operation, $schema, [self::COMPUTE_REFERENCES => true] + $serializerContext, $forceCollection);
         $definitionName = $this->definitionNameFactory->create($className, $format, $className, $operation, $serializerContext);
         $definitions = $schema->getDefinitions();
         $prefix = $this->getSchemaUriPrefix($schema->getVersion());
         $collectionKey = $schema->getItemsDefinitionKey();
 
-        // Already computed
-        if (!$collectionKey && isset($definitions[$definitionName])) {
-            $schema['$ref'] = $prefix.$definitionName;
-
-            return $schema;
-        }
-
         $key = $schema->getRootDefinitionKey() ?? $collectionKey;
-
         $name = Schema::TYPE_OUTPUT === $type ? self::ITEM_BASE_SCHEMA_NAME : self::ITEM_BASE_SCHEMA_OUTPUT_NAME;
         if (!isset($definitions[$name])) {
             $definitions[$name] = Schema::TYPE_OUTPUT === $type ? self::ITEM_BASE_SCHEMA_OUTPUT : self::ITEM_BASE_SCHEMA;
         }
 
-        $definitions[$definitionName] = [
-            'allOf' => [
-                ['$ref' => $prefix.$name],
-                ['$ref' => $prefix.$key],
-            ],
-        ];
+        if (!$collectionKey) {
+            $schema['definitions'][$definitionName] = [
+                'allOf' => [
+                    ['$ref' => $prefix.$name],
+                    ['$ref' => $prefix.$key],
+                    $definitions[$definitionName],
+                ],
+            ];
+            $schema['$ref'] = $preifx . $definitionName;
+
+            return $schema;
+        }
 
         if (isset($definitions[$key]['description'])) {
             $definitions[$definitionName]['description'] = $definitions[$key]['description'];
@@ -272,5 +272,37 @@ final class SchemaFactory implements SchemaFactoryInterface, SchemaFactoryAwareI
         if ($this->schemaFactory instanceof SchemaFactoryAwareInterface) {
             $this->schemaFactory->setSchemaFactory($schemaFactory);
         }
+    }
+
+    private function collectRefs(array|\ArrayObject $baseFormatSchema, $prefix)
+    {
+        if (!$key = $this->getSubSchemaKey($baseFormatSchema)) {
+            return null;
+        }
+
+        foreach ($baseFormatSchema[$key] as $k => $s) {
+            if (isset($s['$ref'])) {
+                dd($s['$ref'], $prefix);
+            }
+
+            if (!$s instanceof \ArrayObject) {
+                continue;
+            }
+
+            $this->collectRefs($s, $prefix);
+        }
+
+        return [];
+    }
+
+    private function getSubSchemaKey(array|\ArrayObject $subSchema): ?string
+    {
+        foreach (['properties', 'items', 'allOf', 'anyOf', 'oneOf'] as $key) {
+            if (isset($subSchema[$key])) {
+                return $key;
+            }
+        }
+
+        return null;
     }
 }

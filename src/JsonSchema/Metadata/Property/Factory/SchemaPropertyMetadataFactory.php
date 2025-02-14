@@ -283,10 +283,8 @@ final class SchemaPropertyMetadataFactory implements PropertyMetadataFactoryInte
             ];
         }
 
-        if ($className && !$isResourceClass) {
-            return ['type' => 'object'];
-        }
-
+        // When this is set, we compute the schema at SchemaFactory::buildPropertySchema as it
+        // will end up being a $ref to another class schema, we don't have enough informations here
         return ['type' => Schema::UNKNOWN_TYPE];
     }
 
