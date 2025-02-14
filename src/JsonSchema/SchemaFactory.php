@@ -40,7 +40,7 @@ final class SchemaFactory implements SchemaFactoryInterface, SchemaFactoryAwareI
     public const FORCE_SUBSCHEMA = '_api_subschema_force_readable_link';
     public const OPENAPI_DEFINITION_NAME = 'openapi_definition_name';
 
-    public function __construct(ResourceMetadataCollectionFactoryInterface $resourceMetadataFactory, private readonly PropertyNameCollectionFactoryInterface $propertyNameCollectionFactory, private readonly PropertyMetadataFactoryInterface $propertyMetadataFactory, private readonly ?NameConverterInterface $nameConverter = null, ?ResourceClassResolverInterface $resourceClassResolver = null, private readonly ?array $distinctFormats = null, private ?DefinitionNameFactoryInterface $definitionNameFactory = null)
+    public function __construct(ResourceMetadataCollectionFactoryInterface $resourceMetadataFactory, private readonly PropertyNameCollectionFactoryInterface $propertyNameCollectionFactory, private readonly PropertyMetadataFactoryInterface $propertyMetadataFactory, private readonly ?NameConverterInterface $nameConverter = null, ?ResourceClassResolverInterface $resourceClassResolver = null, ?array $distinctFormats = null, private ?DefinitionNameFactoryInterface $definitionNameFactory = null)
     {
         if (!$definitionNameFactory) {
             $this->definitionNameFactory = new DefinitionNameFactory($distinctFormats);
@@ -104,7 +104,9 @@ final class SchemaFactory implements SchemaFactoryInterface, SchemaFactoryAwareI
         /** @var \ArrayObject<string, mixed> $definition */
         $definition = new \ArrayObject(['type' => 'object']);
         $definitions[$definitionName] = $definition;
-        $definition['description'] = $operation ? ($operation->getDescription() ?? '') : '';
+        if ($description = $operation->getDescription()) {
+            $definition['description'] = $description;
+        }
 
         // additionalProperties are allowed by default, so it does not need to be set explicitly, unless allow_extra_attributes is false
         // See https://json-schema.org/understanding-json-schema/reference/object.html#properties

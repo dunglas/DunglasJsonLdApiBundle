@@ -37,37 +37,43 @@ final class SchemaFactory implements SchemaFactoryInterface, SchemaFactoryAwareI
     use SchemaUriPrefixTrait;
 
     private const ITEM_BASE_SCHEMA_NAME = 'HydraItemBaseSchema';
+    private const ITEM_BASE_SCHEMA_OUTPUT_NAME = 'HydraOutputBaseSchema';
     private const COLLECTION_BASE_SCHEMA_NAME = 'HydraCollectionBaseSchema';
     private const BASE_PROP = [
-        'readOnly' => true,
         'type' => 'string',
     ];
     private const BASE_PROPS = [
         '@id' => self::BASE_PROP,
         '@type' => self::BASE_PROP,
     ];
-    private const BASE_ROOT_PROPS = [
-        '@context' => [
-            'readOnly' => true,
-            'oneOf' => [
-                ['type' => 'string'],
-                [
-                    'type' => 'object',
-                    'properties' => [
-                        '@vocab' => [
-                            'type' => 'string',
+    private const ITEM_BASE_SCHEMA = [
+        'type' => 'object',
+        'properties' => [
+            '@context' => [
+                'oneOf' => [
+                    ['type' => 'string'],
+                    [
+                        'type' => 'object',
+                        'properties' => [
+                            '@vocab' => [
+                                'type' => 'string',
+                            ],
+                            'hydra' => [
+                                'type' => 'string',
+                                'enum' => [ContextBuilder::HYDRA_NS],
+                            ],
                         ],
-                        'hydra' => [
-                            'type' => 'string',
-                            'enum' => [ContextBuilder::HYDRA_NS],
-                        ],
+                        'required' => ['@vocab', 'hydra'],
+                        'additionalProperties' => true,
                     ],
-                    'required' => ['@vocab', 'hydra'],
-                    'additionalProperties' => true,
                 ],
-            ],
+            ] + self::BASE_PROPS,
         ],
-    ] + self::BASE_PROPS;
+    ];
+
+    private const ITEM_BASE_SCHEMA_OUTPUT = [
+        'required' => ['@id', '@type'],
+    ] + self::ITEM_BASE_SCHEMA;
 
     /**
      * @param array<string, mixed> $defaultContext
@@ -126,13 +132,14 @@ final class SchemaFactory implements SchemaFactoryInterface, SchemaFactoryAwareI
 
         $key = $schema->getRootDefinitionKey() ?? $collectionKey;
 
-        if (!isset($definitions[self::ITEM_BASE_SCHEMA_NAME])) {
-            $definitions[self::ITEM_BASE_SCHEMA_NAME] = ['type' => 'object', 'properties' => self::BASE_ROOT_PROPS];
+        $name = Schema::TYPE_OUTPUT === $type ? self::ITEM_BASE_SCHEMA_NAME : self::ITEM_BASE_SCHEMA_OUTPUT_NAME;
+        if (!isset($definitions[$name])) {
+            $definitions[$name] = Schema::TYPE_OUTPUT === $type ? self::ITEM_BASE_SCHEMA_OUTPUT : self::ITEM_BASE_SCHEMA;
         }
 
         $definitions[$definitionName] = [
             'allOf' => [
-                ['$ref' => $prefix.self::ITEM_BASE_SCHEMA_NAME],
+                ['$ref' => $prefix.$name],
                 ['$ref' => $prefix.$key],
             ],
         ];

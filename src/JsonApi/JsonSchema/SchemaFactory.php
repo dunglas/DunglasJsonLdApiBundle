@@ -317,15 +317,20 @@ final class SchemaFactory implements SchemaFactoryInterface, SchemaFactoryAwareI
         }
 
         if ($required = $definitions[$key]['required'] ?? null) {
-            foreach ($required as $require) {
-                if (isset($replacement['attributes']['properties'][$require])) {
-                    $replacement['attributes']['required'][] = $require;
-                    continue;
-                }
+            foreach ($required as $i => $require) {
                 if (isset($relationships[$require])) {
                     $replacement['relationships']['required'][] = $require;
+                    unset($required[$i]);
                 }
             }
+
+            $replacement['attributes'] = [
+                'allOf' => [
+                    $replacement['attributes'],
+                    ['type' => 'object', 'required' => $required],
+                ],
+            ];
+
             unset($definitions[$key]['required']);
         }
 
