@@ -66,13 +66,13 @@ return [
         'introspection' => ['enabled' => true],
         'max_query_complexity' => 500,
         'max_query_depth' => 200,
-        'middleware' => []
+        'middleware' => null
     ],
 
     'graphiql' => [
-        'enabled' => false,
+        'enabled' => true,
         'domain' => null,
-        'middleware' => []
+        'middleware' => null
     ],
 
     'exception_to_status' => [
