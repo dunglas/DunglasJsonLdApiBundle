@@ -55,7 +55,10 @@ use ApiPlatform\OpenApi\Options;
 use ApiPlatform\OpenApi\Serializer\NormalizeOperationNameTrait;
 use ApiPlatform\State\ApiResource\Error as ApiResourceError;
 use ApiPlatform\State\Pagination\PaginationOptions;
+use ApiPlatform\Tests\Fixtures\TestBundle\Entity\Issue5793\BagOfTests;
+use ApiPlatform\Tests\Fixtures\TestBundle\Entity\Issue5793\TestEntity;
 use ApiPlatform\Tests\Fixtures\TestBundle\Entity\PropertyCollectionIriOnly;
+use ApiPlatform\Tests\Fixtures\TestBundle\Entity\WritableId;
 use ApiPlatform\Validator\Exception\ValidationException;
 use Psr\Container\ContainerInterface;
 use Symfony\Component\PropertyInfo\Type;
@@ -122,8 +125,8 @@ final class OpenApiFactory implements OpenApiFactoryInterface
         $webhooks = new \ArrayObject();
         $tags = [];
 
-        foreach ($this->resourceNameCollectionFactory->create() as $resourceClass) {
-            // foreach ([PropertyCollectionIriOnly::class] as $resourceClass) {
+        // foreach ($this->resourceNameCollectionFactory->create() as $resourceClass) {
+            foreach ([WritableId::class] as $resourceClass) {
             $resourceMetadataCollection = $this->resourceMetadataFactory->create($resourceClass);
             foreach ($resourceMetadataCollection as $resourceMetadata) {
                 $this->collectPaths($resourceMetadata, $resourceMetadataCollection, $paths, $schemas, $webhooks, $tags, $context);

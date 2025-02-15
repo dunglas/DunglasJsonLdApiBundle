@@ -165,7 +165,7 @@ final class SchemaFactory implements SchemaFactoryInterface, SchemaFactoryAwareI
         $extraProperties = $propertyMetadata->getExtraProperties() ?? [];
         // see AttributePropertyMetadataFactory
         if (true === ($extraProperties[SchemaPropertyMetadataFactory::JSON_SCHEMA_USER_DEFINED] ?? false)) {
-            if (true === $serializerContext[self::COMPUTE_REFERENCES] ?? null) {
+            if (true === ($serializerContext[self::COMPUTE_REFERENCES] ?? null)) {
                 return;
 
             }
@@ -195,7 +195,7 @@ final class SchemaFactory implements SchemaFactoryInterface, SchemaFactoryAwareI
                 || ($propertySchema['format'] ?? $propertySchema['enum'] ?? false)
             )
         ) {
-            if (true === $serializerContext[self::COMPUTE_REFERENCES]) {
+            if (true === ($serializerContext[self::COMPUTE_REFERENCES] ?? null)) {
                 return;
             }
 
@@ -238,13 +238,13 @@ final class SchemaFactory implements SchemaFactoryInterface, SchemaFactoryAwareI
                 continue;
             }
 
-            if (false === $propertyMetadata->getGenId()) {
-                $subDefinitionName = $this->definitionNameFactory->create($className, $format, $className, null, $serializerContext);
-
-                if (isset($subSchema->getDefinitions()[$subDefinitionName])) {
-                    unset($subSchema->getDefinitions()[$subDefinitionName]['properties']['@id']);
-                }
-            }
+            // if (false === $propertyMetadata->getGenId()) {
+            //     $subDefinitionName = $this->definitionNameFactory->create($className, $format, $className, null, $serializerContext);
+            //
+            //     if (isset($subSchema->getDefinitions()[$subDefinitionName])) {
+            //         unset($subSchema->getDefinitions()[$subDefinitionName]['properties']['@id']);
+            //     }
+            // }
 
             if ($isCollection) {
                 $key = ($propertySchema['type'] ?? null) === 'object' ? 'additionalProperties' : 'items';
@@ -261,7 +261,7 @@ final class SchemaFactory implements SchemaFactoryInterface, SchemaFactoryAwareI
             $refs[] = ['type' => 'null'];
         }
 
-        if (!$hasClassName && (true === $serializerContext[self::COMPUTE_REFERENCES] ?? null)) {
+        if (!$hasClassName && true === ($serializerContext[self::COMPUTE_REFERENCES] ?? null)) {
             return;
         }
 

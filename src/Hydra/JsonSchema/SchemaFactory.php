@@ -118,10 +118,28 @@ final class SchemaFactory implements SchemaFactoryInterface, SchemaFactoryAwareI
             return $this->schemaFactory->buildSchema($className, $format, $type, $operation, $schema, $serializerContext, $forceCollection);
         }
 
-        $schema = $this->schemaFactory->buildSchema($className, 'json', $type, $operation, $schema, $serializerContext, $forceCollection);
-        $schema = $this->schemaFactory->buildSchema($className, 'jsonld', $type, $operation, $schema, [self::COMPUTE_REFERENCES => true] + $serializerContext, $forceCollection);
+        if ($schema) {
+            $definitions = $schema->getDefinitions();
+            $jsonDefinitionName = $this->definitionNameFactory->create($className, 'json', $className, $operation, $serializerContext);
+
+            if (!isset($definitions[$jsonDefinitionName])) {
+                $schema = $this->schemaFactory->buildSchema($className, 'json', $type, $operation, $schema, $serializerContext, $forceCollection);
+            }
+        } else {
+            $schema = $this->schemaFactory->buildSchema($className, 'json', $type, $operation, $schema, $serializerContext, $forceCollection);
+        }
+
         $definitionName = $this->definitionNameFactory->create($className, $format, $className, $operation, $serializerContext);
         $definitions = $schema->getDefinitions();
+
+        $addJsonLdBaseSchema = false;
+
+        if (!isset($definitions[$definitionName])) {
+            $addJsonLdBaseSchema = true;
+            // only compute json-ld references, skip the scalar properties as they're inherited from the json format
+            $schema = $this->schemaFactory->buildSchema($className, 'jsonld', $type, $operation, $schema, [self::COMPUTE_REFERENCES => true] + $serializerContext, $forceCollection);
+        }
+
         $prefix = $this->getSchemaUriPrefix($schema->getVersion());
         $collectionKey = $schema->getItemsDefinitionKey();
 
@@ -131,27 +149,35 @@ final class SchemaFactory implements SchemaFactoryInterface, SchemaFactoryAwareI
             $definitions[$name] = Schema::TYPE_OUTPUT === $type ? self::ITEM_BASE_SCHEMA_OUTPUT : self::ITEM_BASE_SCHEMA;
         }
 
-        if (!$collectionKey) {
-            $schema['definitions'][$definitionName] = [
-                'allOf' => [
-                    ['$ref' => $prefix.$name],
-                    ['$ref' => $prefix.$key],
-                    $definitions[$definitionName],
-                ],
+        if (!$collectionKey && isset($definitions[$definitionName])) {
+            if (!$addJsonLdBaseSchema) {
+                $schema['$ref'] = $prefix.$definitionName;
+
+                return $schema;
+            }
+
+            $allOf = [
+                ['$ref' => $prefix.$name],
+                ['$ref' => $prefix.$key],
             ];
-            $schema['$ref'] = $preifx . $definitionName;
+
+            // if there're no properties, we did not compute any json-ld specific reference
+            if (isset($definitions[$definitionName]['properties'])) {
+                $allOf[] = $definitions[$definitionName];
+            }
+
+            $definitions[$definitionName] = new \ArrayObject([
+                'allOf' => $allOf,
+            ]);
+
+            $schema->setDefinitions($definitions);
+            $schema['$ref'] = $prefix.$definitionName;
 
             return $schema;
         }
 
         if (isset($definitions[$key]['description'])) {
             $definitions[$definitionName]['description'] = $definitions[$key]['description'];
-        }
-
-        if (!$collectionKey) {
-            $schema['$ref'] = $prefix.$definitionName;
-
-            return $schema;
         }
 
         // handle hydra:Collection

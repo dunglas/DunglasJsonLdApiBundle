@@ -251,7 +251,6 @@ class JsonSchemaGenerateCommandTest extends KernelTestCase
     {
         $this->tester->run(['command' => 'api:json-schema:generate', 'resource' => RelatedDummy::class, '--type' => 'output', '--format' => 'jsonld']);
         $result = $this->tester->getDisplay();
-        dd('ok');
         $json = json_decode($result, associative: true);
 
         $this->assertArrayHasKey('@id', $json['definitions']['ThirdLevel.jsonld-friends']['properties']);
