@@ -386,4 +386,20 @@ JSON
         self::createClient([], ['headers' => ['accept' => 'application/json']])->request('DELETE', '/something/that/does/not/exist/ever');
         $this->assertResponseStatusCodeSame(404);
     }
+
+    public function testDoNotRebootKernelOnCreateClient(): void
+    {
+        self::bootKernel();
+
+        $mock = $this->createMock(KernelInterface::class);
+
+        // Client need to be retrieved to the must configure the `getContainer`
+        // method
+        $mock->method('getContainer')->willReturn(self::getContainer());
+        $mock->expects($this->never())->method('boot');
+
+        self::$kernel = $mock;
+
+        self::createClient();
+    }
 }
