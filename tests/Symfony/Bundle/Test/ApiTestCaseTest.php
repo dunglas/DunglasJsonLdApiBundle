@@ -393,7 +393,7 @@ JSON
 
         $mock = $this->createMock(KernelInterface::class);
 
-        // Client need to be retrieved to the must configure the `getContainer`
+        // Client need to be retrieved so we must configure the `getContainer`
         // method
         $mock->method('getContainer')->willReturn(self::getContainer());
         $mock->expects($this->never())->method('boot');
