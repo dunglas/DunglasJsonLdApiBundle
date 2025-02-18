@@ -33,6 +33,7 @@ use ApiPlatform\Tests\RecreateSchemaTrait;
 use ApiPlatform\Tests\SetupClassResourcesTrait;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\ExpectationFailedException;
+use Symfony\Component\HttpKernel\KernelInterface;
 
 class ApiTestCaseTest extends ApiTestCase
 {
